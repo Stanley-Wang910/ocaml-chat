@@ -1,0 +1,4 @@
+(lang dune 3.16)
+(name tcp_server_ocaml)
+(sections (lib .))
+(files (lib (META dune-package opam)))

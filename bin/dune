@@ -1,4 +1,9 @@
 (executable
- (public_name tcp_server_ocaml)
- (name main)
- (libraries tcp_server_ocaml lwt lwt.unix logs logs.lwt))
+ (name server)
+ (modules server)
+ (libraries lwt lwt.unix logs))
+
+(executable
+ (name client)
+ (modules client)
+ (libraries lwt lwt.unix))

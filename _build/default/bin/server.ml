@@ -1,52 +1,88 @@
 open Lwt
-
-
-(*shared mutable counter *)
+open Lwt.Syntax
 
 let counter = ref 0
-
 let listen_address = Unix.inet_addr_loopback
 let port = 9000
 let backlog = 10
 
+(* Keep track of all connected clients *)
+let clients = ref []
+
+(* Broadcast a message to all connected clients *)
+let broadcast msg =
+  Lwt_list.iter_p
+    (fun oc ->
+      Lwt.catch
+        (fun () -> Lwt_io.write_line oc msg)
+        (fun _ -> Lwt.return_unit))
+    !clients
+
+(* Server input handling loop *)
+let rec server_input_loop () =
+  let* () = Lwt_io.read_line_opt Lwt_io.stdin >>= function
+    | Some "quit" -> Lwt.fail Exit
+    | Some msg ->
+        let* () = broadcast ("Server: " ^ msg) in
+        Printf.printf "Broadcasted: %s\n" msg;
+        Lwt.return_unit
+    | None -> Lwt.return_unit
+  in
+  server_input_loop ()
 
 let handle_message msg = 
   match msg with
   | "read" -> string_of_int !counter
   | "inc" -> counter := !counter + 1; "Incremented Counter"
-  | _ -> "Unknown Command"
-  
+  | _ -> Printf.sprintf "Client says: %s" msg
 
-
-
-let rec handle_connection incoming_conn outgoing_conn () =
-  Lwt_io.read_line_opt incoming_conn >>=
-  (fun msg ->
-    match msg with
-    | Some msg ->
-      let reply  = handle_message msg in
-      Lwt_io.write_line outgoing_conn reply >>= handle_connection incoming_conn outgoing_conn
-    | None -> Logs_lwt.info (fun m -> m "Connection Closed") >>= return)
-
+let rec handle_connection ic oc () =
+  let* msg = Lwt_io.read_line_opt ic in
+  match msg with
+  | Some msg ->
+    let reply = handle_message msg in
+    let* () = Lwt_io.write_line oc reply in
+    handle_connection ic oc ()
+  | None -> 
+    clients := List.filter (fun c -> c != oc) !clients;
+    Printf.printf "Client disconnected. Total clients: %d\n" (List.length !clients);
+    Lwt.return_unit
 
 let accept_connection conn =
   let fd, _ = conn in
   let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
-  Lwt.on_failure (handle_connection ic oc ()) (fun e -> Logs.err (fun m -> m "%s" (Printexc.to_string e) ));
-  Logs_lwt.info (fun m -> m "New Connection") >>= return
-
+  clients := oc :: !clients;
+  Printf.printf "New client connected. Total clients: %d\n" (List.length !clients);
+  Lwt.async (fun () -> 
+    Lwt.catch
+      (fun () -> handle_connection ic oc ())
+      (fun _ -> 
+        clients := List.filter (fun c -> c != oc) !clients;
+        Lwt.return_unit
+      )
+  );
+  Lwt.return_unit
 
 let create_socket () =
-  let open Lwt_unix in
-  let sock = socket PF_INET SOCK_STREAM 0 in
-  bind sock @@ ADDR_INET(listen_address, port) |> (fun x -> ignore x);
-  listen sock backlog;
+  let sock = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
+  let _ = Lwt_unix.bind sock @@ ADDR_INET(listen_address, port) in
+  Lwt_unix.listen sock backlog;
   sock
-
 
 let create_server sock =
   let rec serve () =
-    Lwt_unix.accept sock >>= accept_connection >>= serve
+    let* conn = Lwt_unix.accept sock in
+    let* _ = accept_connection conn in
+    serve ()
   in serve
 
+let () =
+  Printf.printf "Server starting on port %d...\n" port;
+  Printf.printf "Type messages to broadcast to all clients\n";
+  let sock = create_socket () in
+  Lwt_main.run
+    (Lwt.pick [
+      create_server sock ();
+      server_input_loop ()
+    ])
