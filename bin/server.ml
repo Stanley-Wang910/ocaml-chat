@@ -20,11 +20,11 @@ let backlog = 10
 let clients = ref []
 
 (* Broadcast a message to all connected clients *)
-let broadcast msg =
+let broadcast msg client =
   Lwt_list.iter_p
     (fun oc ->
       Lwt.catch
-        (fun () -> Lwt_io.write_line oc msg)
+        (fun () -> if oc != client then Lwt_io.write_line oc msg else Lwt_io.write_line oc "you are messenger")
         (fun _ -> Lwt.return_unit))
     !clients
 
@@ -33,7 +33,7 @@ let rec server_input_loop () =
   let* () = Lwt_io.read_line_opt Lwt_io.stdin >>= function
     | Some "quit" -> Lwt.fail Exit
     | Some msg ->
-        let* () = broadcast ("Server: " ^ msg) in
+        let* () = Lwt_io.write_line Lwt_io.stdout ("Server: " ^ msg) in
         Printf.printf "Broadcasted: %s\n" msg;
         Lwt.return_unit
     | None -> Lwt.return_unit
@@ -51,7 +51,7 @@ let rec handle_connection ic oc =
   match msg with
   | Some msg ->
     let reply = handle_message msg in
-    let _ = Lwt_list.map_p (fun c -> Lwt_io.write_line c reply) !clients in
+    let* () = broadcast reply oc in
     handle_connection ic oc
   | None -> 
     clients := List.filter (fun c -> c != oc) !clients;
@@ -64,7 +64,7 @@ let accept_connection conn =
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
 
   clients := oc :: !clients;
-  Printf.printf "New client connected. Total clients: %d\n" (List.length !clients);
+  let* () = Lwt_io.write_line Lwt_io.stdout (Printf.sprintf "New client connected. Total clients: %d\n" (List.length !clients)) in
   Lwt.async (fun () -> 
     Lwt.catch
       (fun () -> handle_connection ic oc)
