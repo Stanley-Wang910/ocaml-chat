@@ -18,26 +18,34 @@ let send_message oc msg =
 let receive_message ic =
   Lwt_io.read_line_opt ic
 
-let rec client_loop ic oc =
+let rec write_loop oc =
   print_string "> ";
   flush stdout;
-  let input = read_line () in
-  match input with
-  | "quit" -> Lwt.return_unit
-  | msg ->
-    let* () = send_message oc msg in
-    let* response = receive_message ic in
+  Lwt.bind (Lwt_io.read_line Lwt_io.stdin) (
+    function msg -> match msg with
+      | "quit" -> Lwt.return_unit
+      | x ->
+        let* () = send_message oc x in
+        write_loop oc
+  )
+
+let rec receive_loop ic =
+  let* response = receive_message ic in
     match response with
     | Some resp ->
       Printf.printf "Server: %s\n" resp;
-      client_loop ic oc
+      receive_loop ic
     | None ->
       Printf.printf "Server disconnected\n";
       Lwt.return_unit
+
 
 let () =
   Lwt_main.run begin
     let* (ic, oc) = create_connection () in
     Printf.printf "Connected to server. Type 'quit' to exit.\n";
-    client_loop ic oc
+    Lwt.pick [
+      write_loop oc;
+      receive_loop ic
+    ]
   end

@@ -52,6 +52,7 @@ let rec handle_connection ic oc =
   | Some msg ->
     let reply = handle_message msg in
     let _ = Lwt_list.map_p (fun c -> Lwt_io.write_line c reply) !clients in
+    (* Add promise handler here that keeps running something else even when client has not entered anything *)
     handle_connection ic oc
   | None -> 
     clients := List.filter (fun c -> c != oc) !clients;

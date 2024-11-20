@@ -1,5 +1,0 @@
-lib: [
-  "_build/install/default/lib/tcp_server_ocaml/META"
-  "_build/install/default/lib/tcp_server_ocaml/dune-package"
-  "_build/install/default/lib/tcp_server_ocaml/opam"
-]
