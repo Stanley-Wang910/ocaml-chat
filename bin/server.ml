@@ -1,5 +1,15 @@
-open Lwt
+(*open Lwt*)
+open Lwt_unix
 open Lwt.Syntax
+open Lwt.Infix
+
+(**)
+(*type client = { *)
+(*  ic: Lwt_io.input_channel;*)
+(*  oc: Lwt_io.output_channel;*)
+(*  addr: Lwt_unix.sockaddr;*)
+(*  username: string;*)
+(*}*)
 
 let counter = ref 0
 let listen_address = Unix.inet_addr_loopback
@@ -36,13 +46,13 @@ let handle_message msg =
   | "inc" -> counter := !counter + 1; "Incremented Counter"
   | _ -> Printf.sprintf "Client says: %s" msg
 
-let rec handle_connection ic oc () =
+let rec handle_connection ic oc =
   let* msg = Lwt_io.read_line_opt ic in
   match msg with
   | Some msg ->
     let reply = handle_message msg in
-    let* () = Lwt_io.write_line oc reply in
-    handle_connection ic oc ()
+    let _ = Lwt_list.map_p (fun c -> Lwt_io.write_line c reply) !clients in
+    handle_connection ic oc
   | None -> 
     clients := List.filter (fun c -> c != oc) !clients;
     Printf.printf "Client disconnected. Total clients: %d\n" (List.length !clients);
@@ -52,11 +62,12 @@ let accept_connection conn =
   let fd, _ = conn in
   let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
+
   clients := oc :: !clients;
   Printf.printf "New client connected. Total clients: %d\n" (List.length !clients);
   Lwt.async (fun () -> 
     Lwt.catch
-      (fun () -> handle_connection ic oc ())
+      (fun () -> handle_connection ic oc)
       (fun _ -> 
         clients := List.filter (fun c -> c != oc) !clients;
         Lwt.return_unit
@@ -78,11 +89,10 @@ let create_server sock =
   in serve
 
 let () =
-  Printf.printf "Server starting on port %d...\n" port;
-  Printf.printf "Type messages to broadcast to all clients\n";
   let sock = create_socket () in
   Lwt_main.run
     (Lwt.pick [
       create_server sock ();
       server_input_loop ()
     ])
+
