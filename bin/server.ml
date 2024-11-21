@@ -13,7 +13,7 @@ type client = {
 type broadcast_opt = Some of client | None
 
 (*let counter = ref 0*)
-let listen_address = Unix.inet_addr_loopback
+let listen_address = Unix.inet_addr_any  
 let port = 9000
 let backlog = 5
 
