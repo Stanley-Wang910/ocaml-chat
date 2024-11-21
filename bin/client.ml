@@ -1,15 +1,11 @@
 open Lwt
 open Lwt.Syntax
 
-
-
 let default_host = ref "127.0.0.1"
 let default_port = ref 9000
 
-
 let set_host str = 
   default_host := str
-
 
 let parse_command_line () =
   let usage_msg = 
@@ -21,9 +17,6 @@ let parse_command_line () =
     ("-p", Arg.Set_int default_port, "Port to connect to (default: 9000)");
   ] in
   Arg.parse spec_list (fun _ -> ()) usage_msg
-
-
-
 
 let get_server_ip ()  = !default_host
 
@@ -69,13 +62,9 @@ let rec receive_loop ic input_buffer =
   match response with
   | Some resp ->
       let current_input = Buffer.contents input_buffer in
-      (* Move cursor to the beginning of the line and clear it *)
       let* () = Lwt_io.write Lwt_io.stdout (move_cursor_left ^ clear_line) in
-      (* Print the incoming message *)
       let* () = Lwt_io.write_line Lwt_io.stdout resp in
-      (* Re-display the prompt and current input *)
       let* () = Lwt_io.write Lwt_io.stdout ("> " ^ current_input) in
-      (* Flush stdout to ensure everything is displayed *)
       let* () = Lwt_io.flush Lwt_io.stdout in
       receive_loop ic input_buffer
   | None ->
