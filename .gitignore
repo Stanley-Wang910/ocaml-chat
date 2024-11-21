@@ -1,3 +1,5 @@
+*.env
+
 # Ignore Dune generated files
 _build/
 
