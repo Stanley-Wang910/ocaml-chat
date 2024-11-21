@@ -5,3 +5,5 @@ _build/
 
 # Ignore Python generated files
 __pycache__/
+
+.env
