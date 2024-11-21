@@ -37,7 +37,7 @@ $ opam install dune
 
 First, clone the repo and open the `root` using Bash or Bash-like shells.
 
-Use Dune to build the project (required libraries should be configured in the "Dune" files already).
+Use Dune to build the project (required libraries should be configured in the `Dune` files already).
 
 ```
 $ dune build
@@ -54,8 +54,10 @@ $ dune exec ./_build/default/bin/server.exe
 To boot up a client to access given server:
 
 ```
-$ dune exec ./_build/default/bin/server.exe
+$ dune exec ./_build/default/bin/client.exe
 ```
+
+**You should have a working CLI chat application!**
 
 ### Configuring environment variables for Cross-Internet usage
 
