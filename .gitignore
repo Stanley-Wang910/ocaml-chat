@@ -1,0 +1,7 @@
+*.env
+
+# Ignore Dune generated files
+_build/
+
+# Ignore Python generated files
+__pycache__/
