@@ -11,6 +11,8 @@ type client = {
   username: string;
 }
 
+type broadcast_opt = Some of client | None
+
 (*let counter = ref 0*)
 let listen_address = Unix.inet_addr_loopback
 let port = 9000
@@ -21,8 +23,9 @@ let client_id_counter = ref 0
 let clients = ref []
 
 (* Broadcast a message to all connected clients *)
-let broadcast msg sender =
-  Lwt_list.map_p
+let broadcast msg b_opt = match b_opt with 
+  | Some sender -> 
+  (Lwt_list.map_p
     (fun client ->
       if client.id <> sender.id then
       Lwt.catch
@@ -33,7 +36,14 @@ let broadcast msg sender =
       (*  (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "\nyou > %s\n" msg))*)
         Lwt_io.write_line sender.oc ("\nsent\n")
         )
-    !clients
+    !clients)
+| None -> 
+  (Lwt_list.map_p
+    (fun client ->
+      Lwt.catch
+        (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "\n%s\n" msg))
+        (fun _ -> Lwt.return_unit))
+        !clients)
 
 (*let handle_message msg = *)
 (*  match msg with*)
@@ -45,7 +55,7 @@ let rec handle_connection client =
   let* msg = Lwt_io.read_line_opt client.ic in
   match msg with
   | Some msg ->
-    let _ = broadcast msg client in
+    let _ = broadcast msg (Some client) in
     handle_connection client
   | None -> 
     clients := List.filter (fun c -> c.id <> client.id) !clients;
@@ -64,7 +74,8 @@ let accept_connection conn =
     let* () = Lwt_io.write_line oc (Printf.sprintf "Welcome to the chat %s!" username) in  (* Changed this line *)
     let client = { ic; oc; id ; username } in 
     clients := client :: !clients;
-    Printf.printf "New client %d connected. Total clients: %d\n" client.id (List.length !clients);
+    let msg = Printf.sprintf "%s connected. Total online: %d" client.username (List.length !clients) in
+    let* _ = broadcast msg None in
   
     Lwt.catch
       (fun () -> handle_connection client)
@@ -74,7 +85,7 @@ let accept_connection conn =
       )
   );
   Lwt.return_unit
-
+  
 (*(* Server input handling loop *)*)
 (*let rec server_input_loop () =*)
 (*  let* () = Lwt_io.read_line_opt Lwt_io.stdin >>= function*)
