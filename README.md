@@ -5,7 +5,7 @@ paradigms to deal with concurrent requests and scaling.
 
 WIP: Currently in development.
 
-Project created as a part of COMP 302 Programming Languages and & Paradigms at McGill.
+Project created as a part of COMP 302 Programming Languages and Paradigms at McGill.
 
 ## Features
 
