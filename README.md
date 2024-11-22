@@ -1,4 +1,4 @@
-# Simple OCaml UDP Server
+# Simple OCaml TCP Server
 
 Simple chat application between CLI client users in OCaml. Utilizes promises and leverages functional programming
 paradigms to deal with concurrent requests and scaling.
