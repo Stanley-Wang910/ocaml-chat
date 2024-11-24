@@ -47,7 +47,7 @@ Dune should then build required binaries for you to access the chat application 
 To boot up a server for hosting the chat application:
 
 ```
-$ dune exec ./_build/default/bin/server.exe
+$ ./_build/default/bin/server.exe
 ```
 
 The server will accept clients from any address.
@@ -55,7 +55,7 @@ The server will accept clients from any address.
 To boot up a client to access given server:
 
 ```
-$ dune exec ./_build/default/bin/client.exe -h "SERVER_IP_ADDRESS" -p PORT
+$ ./_build/default/bin/client.exe -h "SERVER_IP_ADDRESS" -p PORT
 
 -h { Server IP Address | Default: Localhost }
 -p { Listening Port | Defualt: 9000 }
