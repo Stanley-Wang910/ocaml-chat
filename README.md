@@ -3,8 +3,6 @@
 Simple chat application between CLI client users in OCaml (goated language. Leverages functional programming
 paradigms to deal with concurrent requests and scaling.
 
-Project created as a part of COMP 302 Programming Languages and Paradigms at McGill.
-
 ## Features
 
 This repository allows you to build executables for both a server and a client that connects. Multiple clients can connect to one server instance.
