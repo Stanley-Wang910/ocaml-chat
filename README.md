@@ -1,6 +1,6 @@
 # OCaml TCP Chatroom Server 
 
-Simple chat application between CLI client users in OCaml (goated language. Leverages functional programming
+Simple chat application between CLI client users in OCaml (goated language). Leverages functional programming
 paradigms to deal with concurrent requests and scaling.
 
 ## Features
