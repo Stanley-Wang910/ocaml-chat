@@ -9,10 +9,10 @@ let line_up = "\027[A"
 
 (* Colors for connection/transmission messages *)
 let red = "\027[1;31m"
-let green = "\027[1;92m"
+let green = "\027[1;32m"
 let yellow = "\027[1;33m"
 let white = "\027[1;37m"
-let default = "\027[22;39m"
+let default = "\027[39m"
 let reset = "\027[0m"
 
 (* user colors *)
@@ -164,7 +164,7 @@ let create_server sock =
     serve ()
   in serve
 
-(* Main startup loop *)
+(* "Main function" *)
 let () =
   let sock = create_socket () in
   Lwt_main.run
