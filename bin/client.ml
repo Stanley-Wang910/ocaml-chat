@@ -5,7 +5,6 @@ open Lwt.Syntax
 let clear_line = "\027[2K"
 let move_cursor_left = "\027[1000D"
 let clear = clear_line ^ move_cursor_left
-let line_up = "\027[A"
 let clear_screen = "\027[2J"
 let move_cursor_home = "\027[H"
 let fresh_screen = clear_screen ^ move_cursor_home
@@ -25,12 +24,12 @@ let server_disconn_msg = red ^ "\nServer disconnected" ^ reset
 (* Client "structure" *)
 let default_host = ref "127.0.0.1"
 let default_port = ref 9000
+let current_input = ref ""
 
 (* Getter and setter for host *)
 let set_host str = 
   default_host := str
-
-let get_server_ip ()  = !default_host
+let get_server_ip () = !default_host
 
 (* Handle command input to update host and port *)
 let parse_command_line () =
@@ -61,48 +60,92 @@ let send_message oc msg =
 let receive_message ic =
   Lwt_io.read_line_opt ic
 
-(* Input handling loop *)
-let rec input_loop oc =
-  let* line = Lwt_io.read_line_opt Lwt_io.stdin in
-  match line with
-  | Some input ->
-      let input = String.trim input in
-      if input = "quit" then
-        let* () = Lwt_io.write_line Lwt_io.stdout disconn_msg in
-        Lwt_io.close oc
-      else if input = "" then
-        let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear ^ "> ") in
-        input_loop oc
-      else
-        let* () = send_message oc input in
-        input_loop oc
-  | None -> Lwt_io.close oc
+ (*Function to redraw the input line *)
+let redraw_input () =
+  let* () = Lwt_io.write Lwt_io.stdout (clear ^ "> " ^ !current_input) in
+  Lwt_io.flush Lwt_io.stdout
 
 (* Message receiving loop *)
-(* WHAT WAS INPUTTED BEFORE RECEIVING A MESSAGE IS NOT DISPLAYED BUT STILL EXISTS. IT MUST BE DISPLAYED. *)
 let rec receive_loop ic =
   let* response = receive_message ic in
   match response with
   | Some resp ->
+      let* () = Lwt_io.write Lwt_io.stdout clear in
       let* () = Lwt_io.write_line Lwt_io.stdout resp in
-      let* () = Lwt_io.write Lwt_io.stdout "> " in
+      let* () = redraw_input () in
       receive_loop ic
-  | None -> Lwt_io.write_line Lwt_io.stdout server_disconn_msg
+  | None ->
+      let* () = Lwt_io.write_line Lwt_io.stdout server_disconn_msg in
+      Lwt.return_unit
+
+(* Set up raw mode for terminal *)
+let setup_terminal ?(echo=false) () =
+  let term = Unix.tcgetattr Unix.stdin in
+  let raw_term = {term with Unix.c_icanon = false; Unix.c_echo = echo} in
+  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH raw_term;
+  Lwt.return term
+
+(* Restore terminal settings *)
+let restore_terminal term =
+  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH term
+
+(* Handle keyboard input character by character *)
+let rec keyboard_input_loop oc =
+  let* char = Lwt_io.read_char_opt Lwt_io.stdin in
+  match char with
+  | Some '\n' ->
+      let input = !current_input in
+      current_input := "";
+      let* () = Lwt_io.write_line Lwt_io.stdout "" in
+      if input = "quit" then
+        let* () = Lwt_io.write_line Lwt_io.stdout disconn_msg in
+        Lwt_io.close oc
+      else
+        let* () = send_message oc input in
+        let* () = Lwt_io.write Lwt_io.stdout "> " in 
+        (*let* () = redraw_input () in*)
+        keyboard_input_loop oc
+  | Some '\127' -> (* ASCII code for backspace *)
+      if String.length !current_input > 0 then
+        begin
+          current_input := String.sub !current_input 0 (String.length !current_input - 1);
+          let* () = Lwt_io.write Lwt_io.stdout "\b \b" in
+          let* () = Lwt_io.flush Lwt_io.stdout in
+          keyboard_input_loop oc
+        end
+      else
+        keyboard_input_loop oc
+  | Some c ->
+      current_input := !current_input ^ String.make 1 c;
+      let* () = Lwt_io.write_char Lwt_io.stdout c in
+      let* () = Lwt_io.flush Lwt_io.stdout in
+      keyboard_input_loop oc
+  | None -> Lwt_io.close oc
 
 (* "Main function" *)
 let () =
   parse_command_line ();
+  let term = Unix.tcgetattr Unix.stdin in
   Lwt_main.run begin
     Lwt.catch
       (fun () ->
         let server_ip = get_server_ip () in
         let* (ic, oc) = create_connection server_ip in
-	let* () = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ welcome_msg) in
-	let* () = Lwt_io.write Lwt_io.stdout "Username > " in
+        let* _raw_term = setup_terminal ~echo:true () in  (* Enable echo for username *)
+        let* () = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ welcome_msg) in
+        let* () = Lwt_io.write Lwt_io.stdout "Username > " in
+        let* username = Lwt_io.read_line Lwt_io.stdin in
+        let* _chat_term = setup_terminal ~echo:false () in  (* Disable echo for chat *)
+        let* () = send_message oc username in
+        let* () = Lwt_io.write Lwt_io.stdout "> " in
         Lwt.pick [
-          input_loop oc;
+          keyboard_input_loop oc;
           receive_loop ic
         ]
       )
-      (fun _ -> Lwt.return_unit)
-  end
+      (fun _ -> 
+        restore_terminal term;
+        Lwt.return_unit
+      )
+  end;
+  restore_terminal term
