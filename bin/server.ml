@@ -110,9 +110,12 @@ let rec accept_connection conn =
     | Some username -> (
         (* Username validation to ensure client uniqueness *)
         if List.exists (fun name -> name = username) (List.map (fun client -> client.username) !clients) then
-          let* () = Lwt_io.write_line oc (Printf.sprintf "The username %s already exists. " username) in
+          let* () = Lwt_io.write_line oc (Printf.sprintf "The username %s already exists." username) in
           accept_connection conn
-        else
+        (*else if String.trim username = "" then
+          let* () = Lwt_io.write_line oc (Printf.sprintf "%s%sPlease enter a username > " username) in
+          accept_connection conn*)
+	else
           (* Client initialization *)
           let color = get_color () in
           let client = { ic; oc; id; username; color } in

@@ -5,6 +5,7 @@ open Lwt.Syntax
 let clear_line = "\027[2K"
 let move_cursor_left = "\027[1000D"
 let clear = clear_line ^ move_cursor_left
+let line_up = "\027[A"
 let clear_screen = "\027[2J"
 let move_cursor_home = "\027[H"
 let fresh_screen = clear_screen ^ move_cursor_home
@@ -52,6 +53,17 @@ let create_connection server_ip =
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output sock in
   return (ic, oc)
 
+(* Set up raw mode for terminal *)
+let setup_terminal ?(echo=false) () =
+  let term = Unix.tcgetattr Unix.stdin in
+  let raw_term = {term with Unix.c_icanon = false; Unix.c_echo = echo} in
+  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH raw_term;
+  Lwt.return term
+
+(* Restore terminal settings *)
+let restore_terminal term =
+  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH term
+
 (* Functions for message sending and receiving *)
 let send_message oc msg =
   let* () = Lwt_io.write_line oc msg in
@@ -60,10 +72,51 @@ let send_message oc msg =
 let receive_message ic =
   Lwt_io.read_line_opt ic
 
- (*Function to redraw the input line *)
+(*Function to redraw the input line *)
 let redraw_input () =
   let* () = Lwt_io.write Lwt_io.stdout (clear ^ "> " ^ !current_input) in
   Lwt_io.flush Lwt_io.stdout
+
+(* Input handling loop (character by character) *)
+let rec input_loop oc =
+  let* char = Lwt_io.read_char_opt Lwt_io.stdin in
+  match char with
+  | Some '\n' ->
+      let input = !current_input in
+      current_input := "";
+      let* () = Lwt_io.write_line Lwt_io.stdout "" in
+      if input = "quit" then
+        let* () = Lwt_io.write_line Lwt_io.stdout disconn_msg in
+        Lwt_io.close oc
+      else if String.trim input = "" then
+        let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear ^ "> ") in 
+        input_loop oc
+      else
+        let* () = send_message oc (String.trim input) in
+        input_loop oc
+  (* Handle backspace *)
+  | Some '\127' ->
+      if String.length !current_input > 0 then
+        begin
+	  current_input := String.sub !current_input 0 (String.length !current_input - 1);
+	  let* () = Lwt_io.write Lwt_io.stdout "\b \b" in
+          let* () = Lwt_io.flush Lwt_io.stdout in
+          input_loop oc
+	end
+      else
+        input_loop oc
+  | Some c ->
+      (* Check for unprintable characters *)
+      if Char.code c < 32 then
+        input_loop oc
+      else
+	begin
+          current_input := !current_input ^ String.make 1 c;
+          let* () = Lwt_io.write_char Lwt_io.stdout c in
+          let* () = Lwt_io.flush Lwt_io.stdout in
+      	  input_loop oc
+	end
+  | None -> Lwt_io.close oc
 
 (* Message receiving loop *)
 let rec receive_loop ic =
@@ -78,49 +131,29 @@ let rec receive_loop ic =
       let* () = Lwt_io.write_line Lwt_io.stdout server_disconn_msg in
       Lwt.return_unit
 
-(* Set up raw mode for terminal *)
-let setup_terminal ?(echo=false) () =
-  let term = Unix.tcgetattr Unix.stdin in
-  let raw_term = {term with Unix.c_icanon = false; Unix.c_echo = echo} in
-  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH raw_term;
-  Lwt.return term
-
-(* Restore terminal settings *)
-let restore_terminal term =
-  Unix.tcsetattr Unix.stdin Unix.TCSAFLUSH term
-
-(* Handle keyboard input character by character *)
-let rec keyboard_input_loop oc =
-  let* char = Lwt_io.read_char_opt Lwt_io.stdin in
-  match char with
-  | Some '\n' ->
-      let input = !current_input in
-      current_input := "";
-      let* () = Lwt_io.write_line Lwt_io.stdout "" in
-      if input = "quit" then
-        let* () = Lwt_io.write_line Lwt_io.stdout disconn_msg in
-        Lwt_io.close oc
+(* Username validation loop *)
+let rec username_loop ic oc =
+  let* username = Lwt_io.read_line_opt Lwt_io.stdin in
+  match username with
+  | Some name ->
+      if String.trim name = "" then
+        let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear ^ "Please enter a username > ") in 
+	username_loop ic oc
       else
-        let* () = send_message oc input in
-        let* () = Lwt_io.write Lwt_io.stdout "> " in 
-        (*let* () = redraw_input () in*)
-        keyboard_input_loop oc
-  | Some '\127' -> (* ASCII code for backspace *)
-      if String.length !current_input > 0 then
-        begin
-          current_input := String.sub !current_input 0 (String.length !current_input - 1);
-          let* () = Lwt_io.write Lwt_io.stdout "\b \b" in
-          let* () = Lwt_io.flush Lwt_io.stdout in
-          keyboard_input_loop oc
-        end
-      else
-        keyboard_input_loop oc
-  | Some c ->
-      current_input := !current_input ^ String.make 1 c;
-      let* () = Lwt_io.write_char Lwt_io.stdout c in
-      let* () = Lwt_io.flush Lwt_io.stdout in
-      keyboard_input_loop oc
-  | None -> Lwt_io.close oc
+	begin
+          let* () = send_message oc name in
+	  let* msg = receive_message ic in
+	  match msg with
+	  | Some resp ->
+	      let* () = Lwt_io.write_line Lwt_io.stdout resp in
+	      (* Check if username exists *)
+	      if String.ends_with ~suffix:"exists." (String.trim resp) then
+	        let* () = Lwt_io.write Lwt_io.stdout "Username > " in
+	        username_loop ic oc
+	      else Lwt.return_unit
+	  | None -> Lwt.return_unit
+	end
+  | None -> Lwt.return_unit
 
 (* "Main function" *)
 let () =
@@ -134,12 +167,10 @@ let () =
         let* _raw_term = setup_terminal ~echo:true () in  (* Enable echo for username *)
         let* () = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ welcome_msg) in
         let* () = Lwt_io.write Lwt_io.stdout "Username > " in
-        let* username = Lwt_io.read_line Lwt_io.stdin in
-        let* _chat_term = setup_terminal ~echo:false () in  (* Disable echo for chat *)
-        let* () = send_message oc username in
-        let* () = Lwt_io.write Lwt_io.stdout "> " in
+        let* () = username_loop ic oc in
+	let* _chat_term = setup_terminal ~echo:false () in  (* Disable echo for chat *)
         Lwt.pick [
-          keyboard_input_loop oc;
+          input_loop oc;
           receive_loop ic
         ]
       )
