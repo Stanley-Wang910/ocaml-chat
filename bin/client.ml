@@ -36,12 +36,13 @@ let get_server_ip () = !default_host
 let parse_command_line () =
   let usage_msg = 
     "Usage: client [-h <host>] [-p <port>]\n\
-     Default: host=127.0.0.1, port=9000" 
+    Default: host=127.0.0.1, port=9000" 
   in
   let spec_list = [
     ("-h", Arg.String set_host, "Host to connect to (default: 127.0.0.1)");
     ("-p", Arg.Set_int default_port, "Port to connect to (default: 9000)");
-  ] in
+  ]
+  in
   Arg.parse spec_list (fun _ -> ()) usage_msg
 
 (* Create the client-server connection *)
@@ -103,51 +104,52 @@ let rec username_loop ic oc =
   | Some name ->
       if name = "" then
         let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear) in
-	let* () = fancy_display name_str2 in
-	Input.prompt := name_str2;
-	username_loop ic oc
+        let* () = fancy_display name_str2 in
+        Input.prompt := name_str2;
+        username_loop ic oc
       else
-	begin
+        begin
           let* () = send_message oc name in
-	  let* msg = receive_message ic in
-	  match msg with
-	  | Some resp ->
-	      let* () = Lwt_io.write_line Lwt_io.stdout resp in
-	      (* Check if username exists *)
-	      if String.ends_with ~suffix:("exists." ^ reset) (String.trim resp) then
-	        let* () = fancy_display name_str1 in
-		Input.prompt := name_str1;
-	        username_loop ic oc
-	      else
-		Lwt_io.write Lwt_io.stdout "> "
-	  | None -> Lwt.return_unit
-	end
+          let* msg = receive_message ic in
+          match msg with
+          | Some resp ->
+              let* () = Lwt_io.write_line Lwt_io.stdout resp in
+              (* Check if username exists *)
+              if String.ends_with ~suffix:("exists." ^ reset) (String.trim resp) then
+                let* () = fancy_display name_str1 in
+                Input.prompt := name_str1;
+                username_loop ic oc
+              else
+                Lwt_io.write Lwt_io.stdout "> "
+          | None -> Lwt.return_unit
+        end
   | None -> Lwt.return_unit
 
 (* "Main function" *)
 let () =
   parse_command_line ();
   let term = Unix.tcgetattr Unix.stdin in
-  Lwt_main.run begin
-    Lwt.catch
-      (fun () ->
-        let server_ip = get_server_ip () in
-        let* (ic, oc) = create_connection server_ip in
-	(* Enable character-by-character input *)
-        let _raw_term = Input.setup_raw_terminal () in 
-        let* () = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ welcome_msg) in
-        let* () = fancy_display name_str1 in
-	Input.prompt := name_str1;
-	let* () = username_loop ic oc in
-	Input.prompt := "> ";
-        Lwt.pick [
-	  send_loop oc;
-          receive_loop ic
-        ]
-      )
-      (fun _ -> 
-        Input.restore_terminal term;
-        Lwt.return_unit
-      )
-  end;
+  Lwt_main.run
+    begin
+      Lwt.catch
+        (fun () ->
+          let server_ip = get_server_ip () in
+          let* (ic, oc) = create_connection server_ip in
+          (* Enable character-by-character input *)
+          let _raw_term = Input.setup_raw_terminal () in 
+          let* () = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ welcome_msg) in
+          let* () = fancy_display name_str1 in
+          Input.prompt := name_str1;
+          let* () = username_loop ic oc in
+          Input.prompt := "> ";
+          Lwt.pick [
+            send_loop oc;
+            receive_loop ic
+          ]
+        )
+        (fun _ -> 
+          Input.restore_terminal term;
+          Lwt.return_unit
+        )
+    end;
   Input.restore_terminal term

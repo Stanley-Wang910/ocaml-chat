@@ -63,33 +63,32 @@ let get_color () =
   List.nth colors ((List.length !clients) mod (List.length colors))
 
 (* Broadcast a message to all connected clients *)
-let broadcast msg b_opt = match b_opt with 
-| Some sender -> 
-  (Lwt_list.map_p
-    (fun client ->
-      if client.id <> sender.id then
-      Lwt.catch
-        (* Broadcast message to all other clients *)
-        (fun () -> Lwt_io.write_line client.oc (clear ^ sender.color ^ sender.username ^ " > " ^ reset ^ msg))
-        (fun _ -> Lwt.return_unit)
-      else
-      Lwt.catch
-        (* Notify the client their message was sent *)
-        (fun () -> Lwt_io.write_line client.oc (line_up ^ clear ^ white ^ "[SENT] " ^ reset ^ msg))
-        (fun _ -> Lwt.return_unit)
-    )
-    !clients
-  )
-| None -> 
-  (* Broadcast message to all clients (for server-end communication) *)
-  (Lwt_list.map_p
-    (fun client ->
-      Lwt.catch
-        (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "%s%s" clear msg))
-        (fun _ -> Lwt.return_unit)
-    )
-    !clients
-  )
+let broadcast msg b_opt =
+  match b_opt with 
+  | Some sender -> 
+      Lwt_list.map_p
+        (fun client ->
+          if client.id <> sender.id then
+            Lwt.catch
+              (* Broadcast message to all other clients *)
+              (fun () -> Lwt_io.write_line client.oc (clear ^ sender.color ^ sender.username ^ " > " ^ reset ^ msg))
+              (fun _ -> Lwt.return_unit)
+          else
+            Lwt.catch
+            (* Notify the client their message was sent *)
+              (fun () -> Lwt_io.write_line client.oc (line_up ^ clear ^ white ^ "[SENT] " ^ reset ^ msg))
+              (fun _ -> Lwt.return_unit)
+        )
+        !clients
+  | None -> 
+      (* Broadcast message to all clients (for server-end communication) *)
+      Lwt_list.map_p
+        (fun client ->
+        Lwt.catch
+          (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "%s%s" clear msg))
+          (fun _ -> Lwt.return_unit)
+        )
+        !clients
 
 (* Connection handling loop *)
 let rec handle_connection client =
@@ -114,15 +113,12 @@ let rec accept_connection conn =
   Lwt.async (fun () -> 
     let* name = Lwt_io.read_line_opt ic in
     match name with
-    | Some username -> (
+    | Some username ->
         (* Username validation to ensure client uniqueness *)
         if List.exists (fun name -> name = username) (List.map (fun client -> client.username) !clients) then
           let* () = Lwt_io.write_line oc (Printf.sprintf "%sThe username %s already exists.%s" yellow username reset) in
           accept_connection conn
-        (*else if String.trim username = "" then
-          let* () = Lwt_io.write_line oc (Printf.sprintf "%s%sPlease enter a username > " username) in
-          accept_connection conn*)
-	else
+        else
           (* Client initialization *)
           let color = get_color () in
           let client = { ic; oc; id; username; color } in
@@ -133,22 +129,21 @@ let rec accept_connection conn =
             (* Start handling the connection *)
             (fun () -> handle_connection client)
             (* Remove the client once they disconnect *)
-	    (fun _ -> 
-              clients := List.filter (fun c -> c.id <> client.id) !clients;
-              Lwt.return_unit
+            (fun _ -> 
+            clients := List.filter (fun c -> c.id <> client.id) !clients;
+            Lwt.return_unit
             )
-        )
     | None -> Lwt.return_unit
   );
   Lwt.return_unit
-  
+
 (* Server input handling loop *)
 let rec server_input_loop () =
   let* input = Input.input_loop () in
   match input with
   | Some msg ->
       if String.lowercase_ascii msg = "quit" then
-	Lwt.return_unit
+        Lwt.return_unit
       else if msg = "" then
         let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear) in
         server_input_loop ()
@@ -172,7 +167,8 @@ let create_server sock =
     let* conn = Lwt_unix.accept sock in
     let* _ = accept_connection conn in
     serve ()
-  in serve
+  in 
+  serve
 
 (* "Main function" *)
 let () =
@@ -182,17 +178,18 @@ let () =
   (* Enable character-by-character input *)
   let _raw_term = Input.setup_raw_terminal () in
   Input.prompt := "";
-  Lwt_main.run begin
-    Lwt.catch
-    (fun () ->
-      Lwt.pick [
-        create_server sock ();
-        server_input_loop ()
-      ]
-    )
-    (fun _ ->
-      Input.restore_terminal term;
-      Lwt.return_unit
-    )
-  end;
+  Lwt_main.run
+    begin
+      Lwt.catch
+        (fun () ->
+          Lwt.pick [
+            create_server sock ();
+            server_input_loop ()
+          ]
+        )
+        (fun _ ->
+          Input.restore_terminal term;
+          Lwt.return_unit
+        )
+    end;
   Input.restore_terminal term
