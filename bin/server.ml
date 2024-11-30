@@ -84,9 +84,9 @@ let broadcast msg b_opt =
       (* Broadcast message to all clients (for server-end communication) *)
       Lwt_list.map_p
         (fun client ->
-        Lwt.catch
-          (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "%s%s" clear msg))
-          (fun _ -> Lwt.return_unit)
+          Lwt.catch
+            (fun () -> Lwt_io.write_line client.oc (Printf.sprintf "%s%s" clear msg))
+            (fun _ -> Lwt.return_unit)
         )
         !clients
 
@@ -130,8 +130,8 @@ let rec accept_connection conn =
             (fun () -> handle_connection client)
             (* Remove the client once they disconnect *)
             (fun _ -> 
-            clients := List.filter (fun c -> c.id <> client.id) !clients;
-            Lwt.return_unit
+              clients := List.filter (fun c -> c.id <> client.id) !clients;
+              Lwt.return_unit
             )
     | None -> Lwt.return_unit
   );

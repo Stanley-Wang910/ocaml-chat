@@ -95,7 +95,7 @@ let rec input_loop () =
                 Lwt.return (Some "NA")
           | None -> Lwt.return None
         else  (* Everything else that was not everything else before *)
-        Lwt.return (Some "NA")
+          Lwt.return (Some "NA")
     (* Normal character *)
     | Some c -> Lwt.return (Some (String.make 1 c))
     | None -> Lwt.return None
@@ -107,13 +107,13 @@ let rec input_loop () =
   | Some "LEFT" ->
       if !cursor_pos > 0 then
         cursor_pos := !cursor_pos - 1;
-        let* () = redraw_input () in
-        input_loop ()
+      let* () = redraw_input () in
+      input_loop ()
   | Some "RIGHT" ->
       if !cursor_pos < String.length !current_input then
         cursor_pos := !cursor_pos + 1;
-        let* () = redraw_input () in
-        input_loop ()
+      let* () = redraw_input () in
+      input_loop ()
   | Some "DELETE" ->
       if !cursor_pos < String.length !current_input then
         begin
