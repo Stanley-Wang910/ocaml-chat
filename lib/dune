@@ -1,2 +1,4 @@
 (library
- (name tcp_server_ocaml))
+ (name input)
+ (public_name chani.input)
+ (libraries unix lwt lwt.unix))

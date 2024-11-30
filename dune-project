@@ -1,12 +1,11 @@
 (lang dune 3.0)
 (package
- (name tcp_server_ocaml)
+ (name chani)
  (allow_empty)
  (depends
   (ocaml (>= 4.14.0))
-  lwt
-  logs
-  logs-fmt))
+  lwt)
+)
 
 ; (lang dune 3.16)
 ;

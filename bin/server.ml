@@ -1,4 +1,3 @@
-open Lwt_unix
 open Lwt.Syntax
 
 (* Escape characters for formatting *)
@@ -6,13 +5,18 @@ let clear_line = "\027[2K"
 let move_cursor_left = "\027[1000D"
 let clear = clear_line ^ move_cursor_left
 let line_up = "\027[A"
+let clear_screen = "\027[2J"
+let move_cursor_home = "\027[H"
+let fresh_screen = clear_screen ^ move_cursor_home
 
 (* Colors for connection/transmission messages *)
 let red = "\027[1;31m"
 let green = "\027[1;32m"
 let yellow = "\027[1;33m"
 let white = "\027[1;37m"
+let caml_orange = "\027[38;5;214m"
 let default = "\027[39m"
+let bold = "\027[1m"
 let reset = "\027[0m"
 
 (* user colors *)
@@ -26,6 +30,9 @@ let blue = "\027[38;5;75m"
 let purple = "\027[38;5;141m"
 let magenta = "\027[95m"
 let pink = "\027[38;5;219m"
+
+(* Message for starting up the server *)
+let startup_msg = bold ^ caml_orange ^ "Server running." ^ reset
 
 (* The client type *)
 type client = { 
@@ -110,7 +117,7 @@ let rec accept_connection conn =
     | Some username -> (
         (* Username validation to ensure client uniqueness *)
         if List.exists (fun name -> name = username) (List.map (fun client -> client.username) !clients) then
-          let* () = Lwt_io.write_line oc (Printf.sprintf "The username %s already exists." username) in
+          let* () = Lwt_io.write_line oc (Printf.sprintf "%sThe username %s already exists.%s" yellow username reset) in
           accept_connection conn
         (*else if String.trim username = "" then
           let* () = Lwt_io.write_line oc (Printf.sprintf "%s%sPlease enter a username > " username) in
@@ -137,12 +144,12 @@ let rec accept_connection conn =
   
 (* Server input handling loop *)
 let rec server_input_loop () =
-  let* input = Lwt_io.read_line_opt Lwt_io.stdin in
+  let* input = Input.input_loop () in
   match input with
-  | Some "quit" -> Lwt.return_unit
   | Some msg ->
-      let msg = String.trim msg in
-      if msg = "" then
+      if String.lowercase_ascii msg = "quit" then
+	Lwt.return_unit
+      else if msg = "" then
         let* () = Lwt_io.write Lwt_io.stdout (line_up ^ clear) in
         server_input_loop ()
       else
@@ -169,9 +176,23 @@ let create_server sock =
 
 (* "Main function" *)
 let () =
+  let term = Unix.tcgetattr Unix.stdin in
   let sock = create_socket () in
-  Lwt_main.run
-    (Lwt.pick [
-      create_server sock ();
-      server_input_loop ()
-    ])
+  let _ = Lwt_io.write_line Lwt_io.stdout (fresh_screen ^ startup_msg) in
+  (* Enable character-by-character input *)
+  let _raw_term = Input.setup_raw_terminal () in
+  Input.prompt := "";
+  Lwt_main.run begin
+    Lwt.catch
+    (fun () ->
+      Lwt.pick [
+        create_server sock ();
+        server_input_loop ()
+      ]
+    )
+    (fun _ ->
+      Input.restore_terminal term;
+      Lwt.return_unit
+    )
+  end;
+  Input.restore_terminal term
